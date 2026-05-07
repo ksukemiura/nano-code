@@ -1,6 +1,7 @@
 export type Tool = {
   name: string;
   description: string;
+  needsApproval: boolean;
   parameters: Record<string, unknown>;
   execute: (args: Record<string, unknown>) => Promise<string>;
 };
