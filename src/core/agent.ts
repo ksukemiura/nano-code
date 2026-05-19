@@ -40,7 +40,7 @@ export class Agent {
   }
 
   async generate(userPrompt: string): Promise<{ text: string }> {
-    const messages: Message[] = [
+    let messages: Message[] = [
       { role: 'system', content: this.instructions },
       { role: 'user', content: userPrompt },
     ];
@@ -55,6 +55,8 @@ export class Agent {
       if (this.verbose) {
         console.log(`\n=== ステップ ${currentStep}/${this.maxSteps} ===`);
       }
+
+      messages = this.manageContext(messages);
 
       const response = await generateText({
         model: this.model,
@@ -140,5 +142,48 @@ export class Agent {
     }
 
     return { text: finalText };
+  }
+
+  private manageContext(messages: Message[]): Message[] {
+    const CHAR_LIMIT = 30000;
+
+    let totalLength = messages.reduce((sum, message) => sum + message.content.length, 0);
+
+    if (totalLength < CHAR_LIMIT) {
+      return messages;
+    }
+
+    console.log(`\n[Context] 会話履歴を圧縮します（現在: ${totalLength}文字）`);
+
+    const systemMessage = messages[0];
+    if (!systemMessage) {
+      return messages;
+    }
+
+    const recentMessages = messages.slice(-4);
+    let middleMessages = messages.slice(1, -4);
+
+    middleMessages = middleMessages.map(message => {
+      if (message.role === 'tool' && message.content.length > 200) {
+        return {
+          ...message,
+          content: `（以前のツール実行結果は省略されました: ${message.content.length}文字）`
+        };
+      }
+      return message;
+    });
+
+    totalLength = systemMessage.content.length +
+                  middleMessages.reduce((sum, message) => sum + message.content.length, 0) +
+                  recentMessages.reduce((sum, message) => sum + message.content.length, 0);
+
+    while (totalLength > CHAR_LIMIT && middleMessages.length > 0) {
+      const removed = middleMessages.shift();
+      if (removed) {
+        totalLength -= removed.content.length;
+      }
+    }
+
+    return [systemMessage, ...middleMessages, ...recentMessages];
   }
 }
